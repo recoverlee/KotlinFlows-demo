@@ -38,7 +38,6 @@ android {
         jvmTarget = "1.8"
     }
 
-//    project.gradle.startParameter.excludedTaskNames.add('app:compileDebugUnitTestKotlin')
 }
 
 dependencies {
