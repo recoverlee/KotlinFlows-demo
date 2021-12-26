@@ -4,6 +4,7 @@ import org.scarlet.util.delim
 import org.scarlet.util.spaces
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlin.coroutines.coroutineContext
 import kotlin.system.measureTimeMillis
 
 /**
@@ -78,6 +79,8 @@ object List_Demo1 {
         /**
          * List processing can be done only after list construction is finished
          */
+        delim()
+
         foo.forEach {
             println("[Main] process next = $it")
             delay(500)
@@ -112,7 +115,7 @@ object List_Demo2 {
     @JvmStatic
     fun main(args: Array<String>) = runBlocking {
         // Launch a concurrent coroutine to check if the main thread is blocked
-        val job = launch {
+        launch {
             for (k in 1..5) {
                 println("Am I blocked? $k")
                 delay(1500)
@@ -129,6 +132,8 @@ object List_Demo2 {
         /**
          * List processing can be done only after list construction is finished
          */
+        delim()
+
         foo.forEach {
             println("[Main] process next = $it")
             delay(1000)
@@ -149,6 +154,8 @@ object Sequence_Demo {
      * a restricted suspending function.
      */
     private fun foo() = sequence {
+        println("[Sequence] ${Thread.currentThread().name}")
+
         var result: Result<String> = compute("A").also {
             println("${spaces(10)}[Sequence] compute A")
         }
@@ -164,7 +171,7 @@ object Sequence_Demo {
     }
 
     @JvmStatic
-    fun main(args: Array<String>) = runBlocking {
+    fun main(args: Array<String>) = runBlocking<Unit> {
         // Launch a concurrent coroutine to check if the main thread is blocked
         val job = launch {
             for (k in 1..3) {
@@ -179,13 +186,12 @@ object Sequence_Demo {
             foo = foo()
         }
         println("time elapsed for request = $elapsedTime")
+        delim()
 
         foo?.forEach {
             println("[Main] request next = $it")
             delay(500)
         }
-
-        job.join()
     }
 }
 

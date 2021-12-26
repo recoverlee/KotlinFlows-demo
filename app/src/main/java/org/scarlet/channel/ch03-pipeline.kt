@@ -56,9 +56,7 @@ object PipelineExample_Primes {
     fun main(args: Array<String>) = runBlocking{
         var cur = numbersFrom(2)
         repeat(10) {
-            val prime = cur.receive()
-            println(prime)
-            cur = filter(cur, prime)
+            cur = filter(cur, cur.receive().also { println(it) })
         }
         coroutineContext.cancelChildren() // cancel all children to let main finish
     }
