@@ -11,15 +11,15 @@ object FanOut {
     @JvmStatic
     fun main(args: Array<String>) = runBlocking{
         // Single producer
-        val producer: ReceiveChannel<Int> = produceNumbers()
+        val channel: ReceiveChannel<Int> = produceNumbers()
 
         // Multiple consumers
         repeat(5) {
-            launchProcessor(it, producer)
+            launchConsumer(it, channel)
         }
 
         delay(950)
-        producer.cancel() // cancel producer coroutine and thus kill them all
+        channel.cancel()
     }
 
     private fun CoroutineScope.produceNumbers(): ReceiveChannel<Int> = produce {
@@ -30,9 +30,9 @@ object FanOut {
         }
     }
 
-    private fun CoroutineScope.launchProcessor(id: Int, channel: ReceiveChannel<Int>) = launch {
+    private fun CoroutineScope.launchConsumer(id: Int, channel: ReceiveChannel<Int>) = launch {
         for (msg in channel) {
-            println("Processor #$id received $msg")
+            println("Consumer #$id received $msg")
         }
     }
 }

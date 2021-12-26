@@ -5,7 +5,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.consumeEach
 import kotlin.random.Random
-import kotlin.system.measureTimeMillis
 
 @JvmInline
 value class Item(val value: Int)
@@ -16,27 +15,32 @@ suspend fun makeItem(): Item {
 }
 
 object Motivations {
-    private suspend fun getItems() = buildList {
+    suspend fun getItems() = buildList {
+        println("Building first")
         add(makeItem())
+        println("Building second")
         add(makeItem())
+        println("Building third")
         add(makeItem())
     }
 
     @JvmStatic
-    fun main(args: Array<String>) = runBlocking {
-        var items: List<Item>
-        val time = measureTimeMillis {
-            items = getItems()
-        }
-        println("time = $time ms")
+    fun main(args: Array<String>) = runBlocking<Unit> {
+        val startTime = System.currentTimeMillis()
 
-        for (item in items)
-            println("Do something with $item")
+        val items = getItems()
+
+        repeat(items.size) {
+            if (it == 0) {
+                println("time = ${System.currentTimeMillis() - startTime}")
+            }
+            println("Do something with ${items[it]}")
+        }
     }
 }
 
 object Basics {
-    private suspend fun getItems(channel: Channel<Item>) {
+    suspend fun getItems(channel: Channel<Item>) {
         println("Sending first")
         channel.send(makeItem())
         println("Sending second")
@@ -48,21 +52,56 @@ object Basics {
     @ExperimentalCoroutinesApi
     @JvmStatic
     fun main(args: Array<String>) = runBlocking {
-        val channel = Channel<Item>().apply {
-            invokeOnClose { println("Channel closed") }
-        }
+        val channel = Channel<Item>()
 
-        // Channel closed when coroutine completes
+        val startTime = System.currentTimeMillis()
         launch {
             getItems(channel)
         }
 
         repeat(3) {
             val item = channel.receive()
+            if (it == 0) {
+                println("time = ${System.currentTimeMillis() - startTime}")
+            }
             println("\t\tDo something with $item")
         }
+    }
+}
 
-        delay(1000)
+object Sender_Suspends_If_No_Receivers {
+    @JvmStatic
+    fun main(args: Array<String>) = runBlocking<Unit> {
+        val channel = Channel<Int>()
+
+        launch {
+            repeat(1) {
+                println("Sending $it ...")
+                channel.send(42)
+            }
+        }
+    }
+}
+
+object Receiver_Suspends_If_No_Senders {
+    @JvmStatic
+    fun main(args: Array<String>) = runBlocking<Unit> {
+        val channel = Channel<Int>(10)
+
+        launch {
+            repeat(9) {
+                println("Wait for sending ${it}-th ...")
+                channel.send(it)
+                println("Sent $it")
+            }
+        }
+
+        launch {
+            repeat(10) {
+                println("Wait for receiving ${it}-th ...")
+                println("${channel.receive()} received")
+            }
+        }
     }
 }
 
@@ -70,43 +109,54 @@ object Basics {
 object Receiving_and_Closing_Channel {
     @JvmStatic
     fun main(args: Array<String>) = runBlocking {
-        val channel = Channel<Int>()
+        val channel = Channel<Int>().apply {
+            invokeOnClose { println("Channel closed with cause = $it") }
+        }
 
         launch {
             repeat(5) {
                 channel.send(it)
+                delay(50)
             }
             channel.close() // comment it out to see what happen?
-        }
+            println("Is channel closed for receive? ${channel.isClosedForReceive}") // make buffer = 5
+            println("Is channel closed for send? ${channel.isClosedForSend}")
+        }.apply { invokeOnCompletion { println("Sender completes with ex = $it") } }
 
-//        receiveOneByOne(channel)
-//        receiveByIterable(channel)
+        receiveOneByOne(channel)
+        receiveByIterable(channel)
         receiveByConsumeEach(channel)
     }
 
     suspend fun receiveOneByOne(channel: ReceiveChannel<Int>) {
         while (!channel.isClosedForReceive) {
             println(channel.receive())
+            delay(100)
         }
+        println("Is channel closed for receive? ${channel.isClosedForReceive}")
     }
 
     suspend fun receiveByIterable(channel: ReceiveChannel<Int>) {
         // here we print received values using `for` loop (until the channel is closed)
         for (item in channel) {
             println(item)
+            delay(100)
         }
+        println("Is channel closed for receive? ${channel.isClosedForReceive}")
     }
 
     suspend fun receiveByConsumeEach(channel: ReceiveChannel<Int>) {
         channel.consumeEach {
             println(it)
+            delay(100)
         }
+        println("Is channel closed for receive? ${channel.isClosedForReceive}")
     }
 
 }
 
 @ExperimentalCoroutinesApi
-object ReceiverCancellingRendezVousChannel {
+object ReceiverCancellingRendezvousChannel {
     @JvmStatic
     fun main(args: Array<String>) = runBlocking {
 
@@ -117,176 +167,35 @@ object ReceiverCancellingRendezVousChannel {
         }
 
         val receiver1 = launch {
-            println("Receiver 1: received = " + channel.receive())
-            println("Receiver 1 calls cancel")
-            delay(200)
-            channel.cancel(CancellationException("Oops"))
+            while (!channel.isClosedForReceive) {
+                delay(50)
+                println("Receiver 1:received = " + channel.receive())
+            }
         }.apply {
             invokeOnCompletion { println("Receiver 1 completed with ex = $it") }
         }
 
         val receiver2 = launch {
-            println("Receiver 2:received = " + channel.receive())
-            delay(1000)
+            println("Receiver 2: received = " + channel.receive())
+            delay(500)
+            println("Receiver 2 calls cancel")
+            channel.cancel()
         }.apply {
             invokeOnCompletion { println("Receiver 2 completed with ex = $it") }
         }
 
         val sender = launch {
-            channel.send(42)
-            while (true) {
-                delay(1000)
+            while (!channel.isClosedForSend) {
+                channel.send(Random.nextInt())
+                delay(100)
             }
+            println("Is channel closed for send? ${channel.isClosedForSend}")
         }.apply {
-            invokeOnCompletion { println("Sender completed with ex = ${it?.javaClass?.name}, ${it?.message}") }
+            invokeOnCompletion { println("Sender completed with ex = ${it?.javaClass?.name}") }
         }
 
-        delay(5_000)
-        sender.cancelAndJoin()
-        joinAll(receiver1, receiver2)
     }
 }
-
-@ExperimentalCoroutinesApi
-object SenderCloseBufferedChannel {
-    @JvmStatic
-    fun main(args: Array<String>) = runBlocking<Unit>{
-        val channel = Channel<Int>(5).apply {
-            invokeOnClose { ex ->
-                println("Channel closed with ex = $ex")
-            }
-        }
-
-        launch {
-            delay(1000)
-            repeat(5) {
-                println(channel.receive())
-                delay(20)
-            }
-        }.apply {
-            invokeOnCompletion { println("Receiver completed with ex = ${it?.javaClass?.name}, ${it?.message}") }
-        }
-
-        launch {
-            repeat(5) {
-                channel.send(it)
-            }
-            channel.close()
-        }.apply {
-            invokeOnCompletion { println("Sender completed with ex = ${it?.javaClass?.name}, ${it?.message}") }
-        }
-    }
-}
-
-@ExperimentalCoroutinesApi
-object ReceiverCancellingBufferedChannel {
-    @JvmStatic
-    fun main(args: Array<String>) = runBlocking {
-
-        val channel = Channel<Int>(5).apply {
-            invokeOnClose { ex ->
-                println("Channel closed with ex = $ex")
-            }
-        }
-
-        val receiver1 = launch {
-            delay(50)
-            println("Receiver 1:received = " + channel.receive())   // before cancel
-            delay(100)
-            println("Receiver 1:received = " + channel.receive())   // before cancel
-        }.apply {
-            invokeOnCompletion { println("Receiver 1 completed with ex = $it") }
-        }
-
-        val receiver2 = launch {
-            delay(150)
-            println("Receiver 2:received = " + channel.receive())   // before cancel
-            delay(100)
-            println("Receiver 2:received = " + channel.receive())   // before cancel
-        }.apply {
-            invokeOnCompletion { println("Receiver 2 completed with ex = $it") }
-        }
-
-        val sender = launch {
-            channel.send(42)
-            channel.send(33)
-            channel.send(77)
-            channel.send(142)
-            delay(100)
-            channel.close()
-        }.apply {
-            invokeOnCompletion { println("Sender completed with ex = ${it?.javaClass?.name}, ${it?.message}") }
-        }
-
-        delay(5_000)
-        sender.cancelAndJoin()
-        joinAll(receiver1, receiver2)
-    }
-}
-
-@ExperimentalCoroutinesApi
-object SenderClosingBufferedChannel {
-    @JvmStatic
-    fun main(args: Array<String>) = runBlocking {
-
-        val channel = Channel<Int>(5).apply {
-            invokeOnClose { ex ->
-                println("Channel closed with ex = $ex")
-            }
-        }
-
-        val receiver1 = launch {
-            println("Receiver 1: received = " + channel.receive())
-            delay(200)
-            println("Receiver 1 calls cancel")
-            channel.cancel(CancellationException("Oops"))
-        }.apply {
-            invokeOnCompletion { println("Receiver 1 completed with ex = $it") }
-        }
-
-        val receiver2 = launch {
-            println("Receiver 2:received = " + channel.receive())   // before cancel
-            delay(100)
-            println("Receiver 2:received = " + channel.receive())   // before cancel
-            delay(200)
-            println("Receiver 2:received = " + channel.receive())   // after cancel
-            delay(1000)
-        }.apply {
-            invokeOnCompletion { println("Receiver 2 completed with ex = $it") }
-        }
-
-        val sender = launch {
-            channel.send(42)
-            channel.send(33)
-            channel.send(77)
-            channel.send(142)
-            while (true) {
-                delay(1000)
-            }
-        }.apply {
-            invokeOnCompletion { println("Sender completed with ex = ${it?.javaClass?.name}, ${it?.message}") }
-        }
-
-        delay(5_000)
-        sender.cancelAndJoin()
-        joinAll(receiver1, receiver2)
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

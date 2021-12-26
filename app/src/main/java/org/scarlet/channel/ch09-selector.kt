@@ -107,7 +107,7 @@ object Selecting_on_Close {
  * in combination with a biased nature of selection.
  */
 
-object Selecting_to_Send_Demo1 {
+object Selecting_to_Send_Demo {
 
     val worker1 = Channel<String>()
     val worker2 = Channel<String>()
@@ -153,7 +153,7 @@ object Selecting_to_Send_Demo1 {
 @ExperimentalCoroutinesApi
 object Selecting_to_Send {
 
-    fun CoroutineScope.produceNumbers(side: SendChannel<Int>) = produce<Int> {
+    fun CoroutineScope.produceNumbers(side: SendChannel<Int>) = produce {
         for (num in 1..10) { // produce 10 numbers from 1 to 10
             delay(100) // every 100 ms
             select<Unit> {
@@ -182,35 +182,4 @@ object Selecting_to_Send {
         coroutineContext.cancelChildren()
     }
 
-}
-
-/**
- * Deferred values can be selected using `onAwait`.
- */
-object Selecting_Deferred_Value {
-
-    fun CoroutineScope.asyncString(time: Int) = async {
-        delay(time.toLong())
-        "Waited for $time ms"
-    }
-
-    fun CoroutineScope.asyncStringsList(): List<Deferred<String>> {
-        val random = Random(3)
-        return List(12) { asyncString(random.nextInt(1000)) }
-    }
-
-    @JvmStatic
-    fun main(args: Array<String>) = runBlocking {
-        val list = asyncStringsList()
-        val result = select<String> {
-            list.withIndex().forEach { (index, deferred) ->
-                deferred.onAwait { answer ->
-                    "Deferred $index produced answer '$answer'"
-                }
-            }
-        }
-        println(result)
-        val countActive = list.count { it.isActive }
-        println("$countActive coroutines are still active")
-    }
 }

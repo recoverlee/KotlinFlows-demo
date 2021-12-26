@@ -8,8 +8,8 @@ import kotlinx.coroutines.channels.produce
 object Produce_Demo {
     @JvmStatic
     fun main(args: Array<String>) = runBlocking<Unit> {
-//        demoWithPlain()
-        demoWithProduce()
+        demoWithPlain()
+//        demoWithProduce()
     }
 
     suspend fun demoWithPlain() = coroutineScope {
@@ -35,8 +35,9 @@ object Produce_Demo {
      * `produce` is a producer coroutine builder.
      */
     suspend fun demoWithProduce() = coroutineScope {
+        // Producer
         val channel: ReceiveChannel<Int> = produce {
-            (0..10).toList().forEach {
+            (0..10).forEach {
                 channel.send(it)
             }
         }

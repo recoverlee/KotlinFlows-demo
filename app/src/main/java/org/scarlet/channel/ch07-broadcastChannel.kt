@@ -5,6 +5,7 @@ import kotlinx.coroutines.channels.BroadcastChannel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ConflatedBroadcastChannel
 import kotlinx.coroutines.channels.consumeEach
+import org.scarlet.util.delim
 
 @DelicateCoroutinesApi
 object RaceConditionChannel {
@@ -17,9 +18,9 @@ object RaceConditionChannel {
 
         // Producer
         launch {
-            repeat(3) {
+            repeat(6) {
                 // Send data in channel
-                channel.send(fruitArray[it])
+                channel.send(fruitArray[it % 3])
             }
         }
 
@@ -49,9 +50,9 @@ object BroadcastChannelDemo1 {
         val channel = BroadcastChannel<String>(3)
 
         // Producer
-        repeat(3) {
+        repeat(10) {
             // Send data in channel
-            channel.send(fruitArray[it])
+            channel.send(fruitArray[it % fruitArray.size])
         }
 
         // Consumers
@@ -61,7 +62,6 @@ object BroadcastChannelDemo1 {
                     for (value in rcvChannel) {
                         println("Consumer $it: $value")
                     }
-                    // subscription will be closed
                 }
             }
         }
@@ -97,7 +97,7 @@ object BroadcastChannel_Demo2 {
         // Consumers
         repeat(2) {
             launch {
-                coroutineContext[Job]?.invokeOnCompletion { ex -> println("Consumer completed with $ex") }
+                coroutineContext.job.invokeOnCompletion { ex -> println("Consumer completed with $ex") }
 //                channel.openSubscription().consumeEach { value ->
                 channel.consumeEach { value ->
                     println("Consumer $it: $value")
@@ -119,52 +119,46 @@ object BroadcastChannel_Demo2 {
 
 @ObsoleteCoroutinesApi
 @DelicateCoroutinesApi
-object BroadcastChannel_Demo3 {
-
-    private val fruitArray = arrayOf("Apple", "Banana", "Pear", "Kiwi", "Strawberry")
+object BroadcastChannel_Buffering_Demo {
 
     @JvmStatic
     fun main(args: Array<String>) = runBlocking<Unit> {
-        val channel = BroadcastChannel<String>(3)
+        val channel = BroadcastChannel<Int>(3)
 
         // Consumers
         launch {
-            var time = 0
             channel.consumeEach { value ->
-                println("\t\t\tConsumer 0: $value at ${time++ * 500}")
-                delay(500)
+                println("\t\t\tConsumer 0: $value")
+                delay(100)
             }
         }
 
         launch {
-            var time = 0
             channel.consumeEach { value ->
-                println("\t\t\tConsumer 1: $value at ${time++ * 200}")
-                delay(200)
+                println("\t\t\t\t\t\t\tConsumer 1: $value")
+                delay(300)
             }
         }
 
         delay(50) // allow time for receivers to ready
 
         // Producer
-        repeat(5) {
-            // Send data in channel
-            println("Sending ${fruitArray[it]} at ${100 * it}")
-            channel.send(fruitArray[it])
-            delay(100)
+        // Send data in channel
+        repeat(10) {
+            channel.send(it)
+            println("Sent $it")
+            delim()
+            delay(50)
         }
 
         launch {
-            channel.consumeEach { value ->
-                println("\t\t\tLate Consumer: $value")
+            println("Late Consumer")
+            if (channel.openSubscription().tryReceive().isFailure) {
+                channel.cancel()
             }
         }
-
-        delay(1000)
-        channel.close()
     }
 }
-
 
 // Similar to Rx ConflatedPublishSubject
 // Sender never blocks!
@@ -172,44 +166,42 @@ object BroadcastChannel_Demo3 {
 @DelicateCoroutinesApi
 object ConflatedBroadcastChannel_Demo {
 
-    private val fruitArray = arrayOf("Apple", "Banana", "Pear", "Kiwi", "Strawberry")
-
     @JvmStatic
     fun main(args: Array<String>) = runBlocking<Unit> {
-        val channel = ConflatedBroadcastChannel<String>()
+        val channel = ConflatedBroadcastChannel<Int>()
 
         // Consumers
         launch {
-            var time = 0
             channel.consumeEach { value ->
-                println("\t\t\tConsumer 0: $value at ${time++ * 500}")
-                delay(500)
+                println("\t\t\tConsumer 0: $value")
+                delay(100)
             }
         }
 
         launch {
-            var time = 0
             channel.consumeEach { value ->
-                println("\t\t\tConsumer 1: $value at ${time++ * 200}")
-                delay(200)
+                println("\t\t\t\t\t\t\tConsumer 1: $value")
+                delay(300)
             }
         }
+
+        delay(50) // allow time for receivers to ready
 
         // Producer
-        repeat(5) {
-            // Send data in channel
-            println("Sending ${fruitArray[it]} at ${100 * it}")
-            channel.send(fruitArray[it])
-            delay(100)
+        // Send data in channel
+        repeat(10) {
+            channel.send(it)
+            println("Sent $it")
+            delim()
+            delay(50)
         }
 
         launch {
             channel.consumeEach { value ->
-                println("\t\t\tLate Consumer: $value")
+                println("Late Consumer: $value")
+                channel.cancel()
             }
         }
 
-        delay(100)
-        channel.close()
     }
 }
